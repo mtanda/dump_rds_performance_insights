@@ -78,28 +78,33 @@ func main() {
 			for _, piDimension := range piDimensions {
 				switch *dumpType {
 				case "GetResourceMetrics":
-					// TODO: loop for each time range
-					resp, err := piSvc.GetResourceMetrics(&pi.GetResourceMetricsInput{
-						ServiceType: aws.String("RDS"),
-						Identifier:  instance.DbiResourceId,
-						MetricQueries: []*pi.MetricQuery{
-							&pi.MetricQuery{
-								Metric: aws.String(piMetric),
-								GroupBy: &pi.DimensionGroup{
-									Group: aws.String(piDimension),
-									Limit: aws.Int64(limit),
+					st := startTime
+					for st.Before(endTime) {
+						nt := st.Add(maxResults * periodInSeconds * time.Second)
+						resp, err := piSvc.GetResourceMetrics(&pi.GetResourceMetricsInput{
+							ServiceType: aws.String("RDS"),
+							Identifier:  instance.DbiResourceId,
+							MetricQueries: []*pi.MetricQuery{
+								&pi.MetricQuery{
+									Metric: aws.String(piMetric),
+									GroupBy: &pi.DimensionGroup{
+										Group: aws.String(piDimension),
+										Limit: aws.Int64(limit),
+									},
 								},
 							},
-						},
-						StartTime:       aws.Time(startTime),
-						EndTime:         aws.Time(endTime),
-						PeriodInSeconds: aws.Int64(periodInSeconds),
-						MaxResults:      aws.Int64(maxResults),
-					})
-					if err != nil {
-						logger.Fatal(err)
+							StartTime:       aws.Time(st),
+							EndTime:         aws.Time(nt),
+							PeriodInSeconds: aws.Int64(periodInSeconds),
+							MaxResults:      aws.Int64(maxResults),
+						})
+						if err != nil {
+							logger.Fatal(err)
+						}
+						fmt.Printf("%+v\n", resp)
+						st = nt
+						time.Sleep(1 * time.Second)
 					}
-					fmt.Printf("%+v\n", resp)
 				case "DescribeDimensionKeys":
 					resp, err := piSvc.DescribeDimensionKeys(&pi.DescribeDimensionKeysInput{
 						ServiceType: aws.String("RDS"),
