@@ -5,14 +5,34 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 	"time"
 
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awsutil"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/pi"
 	"github.com/aws/aws-sdk-go/service/rds"
+
+	"github.com/aws/aws-lambda-go/lambda"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
 )
+
+type LambdaRequest struct {
+	Region   string `json:"region"`
+	Start    string `json:"start"`
+	End      string `json:"end"`
+	DumpType string `json:"dumpType"`
+}
+type LambdaResponse struct {
+	StatusCode        int               `json:"statusCode"`
+	StatusDescription string            `json:"statusDescription"`
+	Headers           map[string]string `json:"headers"`
+	Body              string            `json:"body"`
+	IsBase64Encoded   bool              `json:"isBase64Encoded"`
+}
 
 const (
 	periodInSeconds = 60
@@ -35,24 +55,17 @@ var (
 	}
 )
 
-func main() {
-	now := time.Now()
-	region := flag.String("region", "us-east-1", "region")
-	start := flag.String("start", now.Add(-20*periodInSeconds*time.Second).Format(time.RFC3339), "start time")
-	end := flag.String("end", now.Format(time.RFC3339), "end time")
-	dumpType := flag.String("dump-type", "GetResourceMetrics", "dump type")
-	flag.Parse()
-
+func dump(region string, start string, end string, dumpType string) error {
 	logger := log.New(os.Stderr, "", log.LstdFlags)
 
-	sess := session.Must(session.NewSession(&aws.Config{Region: region}))
+	sess := session.Must(session.NewSession(&aws.Config{Region: aws.String(region)}))
 	piSvc := pi.New(sess)
 	rdsSvc := rds.New(sess)
-	startTime, err := time.Parse(time.RFC3339, *start)
+	startTime, err := time.Parse(time.RFC3339, start)
 	if err != nil {
 		logger.Fatal(err)
 	}
-	endTime, err := time.Parse(time.RFC3339, *end)
+	endTime, err := time.Parse(time.RFC3339, end)
 	if err != nil {
 		logger.Fatal(err)
 	}
@@ -76,7 +89,7 @@ func main() {
 		}
 		for _, piMetric := range piMetrics {
 			for _, piDimension := range piDimensions {
-				switch *dumpType {
+				switch dumpType {
 				case "GetResourceMetrics":
 					st := startTime
 					for st.Before(endTime) {
@@ -130,5 +143,46 @@ func main() {
 				}
 			}
 		}
+	}
+
+	return nil
+}
+
+func handler(req LambdaRequest) (LambdaResponse, error) {
+	err := dump(req.Region, req.Start, req.End, req.DumpType)
+	if err != nil {
+		return LambdaResponse{
+			StatusCode:        500,
+			StatusDescription: "500 Internal Server Error",
+			IsBase64Encoded:   false,
+			Headers: map[string]string{
+				"Content-Type": "text/plain",
+			},
+			Body: "error",
+		}, err
+	}
+
+	return LambdaResponse{
+		StatusCode:        200,
+		StatusDescription: "200 OK",
+		IsBase64Encoded:   false,
+		Headers: map[string]string{
+			"Content-Type": "text/plain",
+		},
+		Body: "success",
+	}, nil
+}
+
+func main() {
+	if strings.HasPrefix(os.Getenv("AWS_EXECUTION_ENV"), "AWS_Lambda") || os.Getenv("AWS_LAMBDA_RUNTIME_API") != "" {
+		lambda.Start(handler)
+	} else {
+		now := time.Now()
+		region := flag.String("region", "us-east-1", "region")
+		start := flag.String("start", now.Add(-20*periodInSeconds*time.Second).Format(time.RFC3339), "start time")
+		end := flag.String("end", now.Format(time.RFC3339), "end time")
+		dumpType := flag.String("dump-type", "GetResourceMetrics", "dump type")
+		flag.Parse()
+		dump(*region, *start, *end, *dumpType)
 	}
 }
