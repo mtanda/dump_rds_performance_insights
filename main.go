@@ -56,7 +56,7 @@ var (
 	}
 )
 
-func dump(region string, startTime time.Time, endTime time.Time, dumpType string) error {
+func dump(region string, startTime time.Time, endTime time.Time, interval time.Duration, dumpType string) error {
 	sess := session.Must(session.NewSession(&aws.Config{Region: aws.String(region)}))
 	piSvc := pi.New(sess)
 	rdsSvc := rds.New(sess)
@@ -157,7 +157,7 @@ func dump(region string, startTime time.Time, endTime time.Time, dumpType string
 				}
 
 				bucket := "rds-performance-insights-" + *identity.Account
-				now := time.Now()
+				now := time.Now().Truncate(interval)
 				key := fmt.Sprintf("%s/%s/%s/%s/%s/%s/%s.json", *instance.DBInstanceIdentifier, piMetric, piDimension, now.Format("2006"), now.Format("01"), now.Format("02"), now.Format("20060102T150405Z"))
 				uploader := s3manager.NewUploader(sess)
 				_, err = uploader.Upload(&s3manager.UploadInput{
@@ -177,8 +177,11 @@ func dump(region string, startTime time.Time, endTime time.Time, dumpType string
 
 func handler(req LambdaRequest) (LambdaResponse, error) {
 	var startTime, endTime time.Time
+	var d time.Duration
+	var err error
+
 	if req.Interval != "" {
-		d, err := time.ParseDuration(req.Interval)
+		d, err = time.ParseDuration(req.Interval)
 		if err != nil {
 			return LambdaResponse{
 				StatusCode:        500,
@@ -195,7 +198,18 @@ func handler(req LambdaRequest) (LambdaResponse, error) {
 		startTime = now.Add(-d)
 		endTime = now
 	} else {
-		var err error
+		d, err = time.ParseDuration("1s")
+		if err != nil {
+			return LambdaResponse{
+				StatusCode:        500,
+				StatusDescription: "500 Internal Server Error",
+				IsBase64Encoded:   false,
+				Headers: map[string]string{
+					"Content-Type": "text/plain",
+				},
+				Body: "error",
+			}, err
+		}
 		startTime, err = time.Parse(time.RFC3339, req.Start)
 		if err != nil {
 			return LambdaResponse{
@@ -221,7 +235,7 @@ func handler(req LambdaRequest) (LambdaResponse, error) {
 			}, err
 		}
 	}
-	err := dump(req.Region, startTime, endTime, req.DumpType)
+	err = dump(req.Region, startTime, endTime, d, req.DumpType)
 	if err != nil {
 		return LambdaResponse{
 			StatusCode:        500,
@@ -268,8 +282,12 @@ func main() {
 		if err != nil {
 			logger.Fatal(err)
 		}
+		d, err := time.ParseDuration("1s")
+		if err != nil {
+			logger.Fatal(err)
+		}
 
-		err = dump(*region, startTime, endTime, *dumpType)
+		err = dump(*region, startTime, endTime, d, *dumpType)
 		if err != nil {
 			logger.Fatal(err)
 		}
