@@ -24,6 +24,7 @@ type LambdaRequest struct {
 	Region   string `json:"region"`
 	Start    string `json:"start"`
 	End      string `json:"end"`
+	Interval string `json:"interval"`
 	DumpType string `json:"dumpType"`
 }
 type LambdaResponse struct {
@@ -55,18 +56,10 @@ var (
 	}
 )
 
-func dump(region string, start string, end string, dumpType string) error {
+func dump(region string, startTime time.Time, endTime time.Time, dumpType string) error {
 	sess := session.Must(session.NewSession(&aws.Config{Region: aws.String(region)}))
 	piSvc := pi.New(sess)
 	rdsSvc := rds.New(sess)
-	startTime, err := time.Parse(time.RFC3339, start)
-	if err != nil {
-		return err
-	}
-	endTime, err := time.Parse(time.RFC3339, end)
-	if err != nil {
-		return err
-	}
 
 	stsSvc := sts.New(sess)
 	identity, err := stsSvc.GetCallerIdentity(&sts.GetCallerIdentityInput{})
@@ -183,7 +176,52 @@ func dump(region string, start string, end string, dumpType string) error {
 }
 
 func handler(req LambdaRequest) (LambdaResponse, error) {
-	err := dump(req.Region, req.Start, req.End, req.DumpType)
+	var startTime, endTime time.Time
+	if req.Interval != "" {
+		d, err := time.ParseDuration(req.Interval)
+		if err != nil {
+			return LambdaResponse{
+				StatusCode:        500,
+				StatusDescription: "500 Internal Server Error",
+				IsBase64Encoded:   false,
+				Headers: map[string]string{
+					"Content-Type": "text/plain",
+				},
+				Body: "error",
+			}, err
+		}
+
+		now := time.Now().Truncate(d)
+		startTime = now.Add(-d)
+		endTime = now
+	} else {
+		var err error
+		startTime, err = time.Parse(time.RFC3339, req.Start)
+		if err != nil {
+			return LambdaResponse{
+				StatusCode:        500,
+				StatusDescription: "500 Internal Server Error",
+				IsBase64Encoded:   false,
+				Headers: map[string]string{
+					"Content-Type": "text/plain",
+				},
+				Body: "error",
+			}, err
+		}
+		endTime, err = time.Parse(time.RFC3339, req.End)
+		if err != nil {
+			return LambdaResponse{
+				StatusCode:        500,
+				StatusDescription: "500 Internal Server Error",
+				IsBase64Encoded:   false,
+				Headers: map[string]string{
+					"Content-Type": "text/plain",
+				},
+				Body: "error",
+			}, err
+		}
+	}
+	err := dump(req.Region, startTime, endTime, req.DumpType)
 	if err != nil {
 		return LambdaResponse{
 			StatusCode:        500,
@@ -219,7 +257,19 @@ func main() {
 		end := flag.String("end", now.Format(time.RFC3339), "end time")
 		dumpType := flag.String("dump-type", "GetResourceMetrics", "dump type")
 		flag.Parse()
-		err := dump(*region, *start, *end, *dumpType)
+
+		var startTime, endTime time.Time
+		var err error
+		startTime, err = time.Parse(time.RFC3339, *start)
+		if err != nil {
+			logger.Fatal(err)
+		}
+		endTime, err = time.Parse(time.RFC3339, *end)
+		if err != nil {
+			logger.Fatal(err)
+		}
+
+		err = dump(*region, startTime, endTime, *dumpType)
 		if err != nil {
 			logger.Fatal(err)
 		}
