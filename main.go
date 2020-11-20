@@ -142,7 +142,7 @@ func dump(region string, start string, end string, dumpType string) error {
 							Limit: aws.Int64(limit),
 						},
 						PartitionBy: &pi.DimensionGroup{
-							Group: aws.String("db.wait_event"),
+							Group: aws.String(piDimension),
 							Limit: aws.Int64(limit),
 						},
 						StartTime:       aws.Time(startTime),
