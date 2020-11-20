@@ -43,15 +43,15 @@ const (
 var (
 	piMetrics = []string{
 		"db.load.avg",
-		//"db.sampledload.avg",
+		"db.sampledload.avg",
 	}
 	piDimensions = []string{
 		//"db.user",
-		//"db.host",
-		//"db.sql",
-		//"db.sql_tokenized",
+		"db.host",
+		"db.sql",
+		"db.sql_tokenized",
 		"db.wait_event",
-		//"db.wait_event_type",
+		"db.wait_event_type",
 	}
 )
 
