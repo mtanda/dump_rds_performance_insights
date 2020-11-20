@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -14,10 +16,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/pi"
 	"github.com/aws/aws-sdk-go/service/rds"
-
-	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go/service/sts"
 )
 
 type LambdaRequest struct {
@@ -56,19 +56,19 @@ var (
 )
 
 func dump(region string, start string, end string, dumpType string) error {
-	logger := log.New(os.Stderr, "", log.LstdFlags)
-
 	sess := session.Must(session.NewSession(&aws.Config{Region: aws.String(region)}))
 	piSvc := pi.New(sess)
 	rdsSvc := rds.New(sess)
 	startTime, err := time.Parse(time.RFC3339, start)
 	if err != nil {
-		logger.Fatal(err)
+		return err
 	}
 	endTime, err := time.Parse(time.RFC3339, end)
 	if err != nil {
-		logger.Fatal(err)
+		return err
 	}
+
+	buf := new(bytes.Buffer)
 
 	var resp rds.DescribeDBInstancesOutput
 	err = rdsSvc.DescribeDBInstancesPages(&rds.DescribeDBInstancesInput{},
@@ -80,7 +80,7 @@ func dump(region string, start string, end string, dumpType string) error {
 			return !lastPage
 		})
 	if err != nil {
-		logger.Fatal(err)
+		return err
 	}
 
 	for _, instance := range resp.DBInstances {
@@ -112,9 +112,17 @@ func dump(region string, start string, end string, dumpType string) error {
 							MaxResults:      aws.Int64(maxResults),
 						})
 						if err != nil {
-							logger.Fatal(err)
+							return err
 						}
-						fmt.Printf("%+v\n", resp)
+
+						b, err := json.Marshal(&resp)
+						if err != nil {
+							return err
+						}
+						if _, err := buf.Write(b); err != nil {
+							return err
+						}
+
 						st = nt
 						time.Sleep(1 * time.Second)
 					}
@@ -137,15 +145,37 @@ func dump(region string, start string, end string, dumpType string) error {
 						MaxResults:      aws.Int64(maxResults),
 					})
 					if err != nil {
-						logger.Fatal(err)
+						return err
 					}
-					fmt.Printf("%+v\n", resp)
+
+					b, err := json.Marshal(&resp)
+					if err != nil {
+						return err
+					}
+					if _, err := buf.Write(b); err != nil {
+						return err
+					}
 				}
 			}
 		}
 	}
 
-	return nil
+	stsSvc := sts.New(sess)
+	identity, err := stsSvc.GetCallerIdentity(&sts.GetCallerIdentityInput{})
+	if err != nil {
+		return err
+	}
+	bucket := "rds-performance-insights-" + *identity.Account
+	now := time.Now()
+	key := fmt.Sprintf("%s/%s/%s/%s.json", now.Format("2006"), now.Format("01"), now.Format("02"), now.Format("150405"))
+	uploader := s3manager.NewUploader(sess)
+	_, err = uploader.Upload(&s3manager.UploadInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+		Body:   bytes.NewReader(buf.Bytes()),
+	})
+
+	return err
 }
 
 func handler(req LambdaRequest) (LambdaResponse, error) {
@@ -177,12 +207,17 @@ func main() {
 	if strings.HasPrefix(os.Getenv("AWS_EXECUTION_ENV"), "AWS_Lambda") || os.Getenv("AWS_LAMBDA_RUNTIME_API") != "" {
 		lambda.Start(handler)
 	} else {
+		logger := log.New(os.Stderr, "", log.LstdFlags)
+
 		now := time.Now()
 		region := flag.String("region", "us-east-1", "region")
 		start := flag.String("start", now.Add(-20*periodInSeconds*time.Second).Format(time.RFC3339), "start time")
 		end := flag.String("end", now.Format(time.RFC3339), "end time")
 		dumpType := flag.String("dump-type", "GetResourceMetrics", "dump type")
 		flag.Parse()
-		dump(*region, *start, *end, *dumpType)
+		err := dump(*region, *start, *end, *dumpType)
+		if err != nil {
+			logger.Fatal(err)
+		}
 	}
 }

@@ -33,6 +33,13 @@ Resources:
                 - rds:Describe*
               Resource:
                 - "*"
+        - S3CrudPolicy:
+            BucketName: !Ref Bucket
+  Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      AccessControl: Private
+      BucketName: !Sub "rds-performance-insights-${AWS::AccountId}"
 
 Outputs:
   Function:
