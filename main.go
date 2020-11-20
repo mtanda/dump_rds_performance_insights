@@ -68,7 +68,11 @@ func dump(region string, start string, end string, dumpType string) error {
 		return err
 	}
 
-	buf := new(bytes.Buffer)
+	stsSvc := sts.New(sess)
+	identity, err := stsSvc.GetCallerIdentity(&sts.GetCallerIdentityInput{})
+	if err != nil {
+		return err
+	}
 
 	var resp rds.DescribeDBInstancesOutput
 	err = rdsSvc.DescribeDBInstancesPages(&rds.DescribeDBInstancesInput{},
@@ -89,6 +93,8 @@ func dump(region string, start string, end string, dumpType string) error {
 		}
 		for _, piMetric := range piMetrics {
 			for _, piDimension := range piDimensions {
+				buf := new(bytes.Buffer)
+
 				switch dumpType {
 				case "GetResourceMetrics":
 					st := startTime
@@ -156,26 +162,24 @@ func dump(region string, start string, end string, dumpType string) error {
 						return err
 					}
 				}
+
+				bucket := "rds-performance-insights-" + *identity.Account
+				now := time.Now()
+				key := fmt.Sprintf("%s/%s/%s/%s/%s/%s/%s.json", *instance.DBInstanceIdentifier, piMetric, piDimension, now.Format("2006"), now.Format("01"), now.Format("02"), now.Format("20060102T150405Z"))
+				uploader := s3manager.NewUploader(sess)
+				_, err = uploader.Upload(&s3manager.UploadInput{
+					Bucket: aws.String(bucket),
+					Key:    aws.String(key),
+					Body:   bytes.NewReader(buf.Bytes()),
+				})
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
 
-	stsSvc := sts.New(sess)
-	identity, err := stsSvc.GetCallerIdentity(&sts.GetCallerIdentityInput{})
-	if err != nil {
-		return err
-	}
-	bucket := "rds-performance-insights-" + *identity.Account
-	now := time.Now()
-	key := fmt.Sprintf("%s/%s/%s/%s.json", now.Format("2006"), now.Format("01"), now.Format("02"), now.Format("150405"))
-	uploader := s3manager.NewUploader(sess)
-	_, err = uploader.Upload(&s3manager.UploadInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
-		Body:   bytes.NewReader(buf.Bytes()),
-	})
-
-	return err
+	return nil
 }
 
 func handler(req LambdaRequest) (LambdaResponse, error) {
