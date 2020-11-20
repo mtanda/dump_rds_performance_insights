@@ -7,7 +7,7 @@ Globals:
 
 Metadata:
   AWS::ServerlessRepo::Application:
-    Name: dump-rds-performance-insights
+    Name: rds-performance-insights-dump
     Author: Mitsuhiro Tanda
     SemanticVersion: 1.0.0
     ReadmeUrl: README.md
@@ -16,10 +16,10 @@ Resources:
   Function:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: dump-rds-performance-insights
+      FunctionName: rds-performance-insights-dump
       MemorySize: 256
       Runtime: go1.x
-      Handler: dump-rds-performance-insights
+      Handler: rds-performance-insights-dump
       Policies:
         - Version: 2012-10-17
           Statement:

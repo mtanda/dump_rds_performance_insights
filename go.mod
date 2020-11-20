@@ -1,4 +1,4 @@
-module github.com/mtanda/dump_rds_performance_insights
+module github.com/mtanda/rds-performance-insights-dump
 
 go 1.15
 
