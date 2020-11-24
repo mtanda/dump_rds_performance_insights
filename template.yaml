@@ -35,6 +35,17 @@ Resources:
                 - "*"
         - S3CrudPolicy:
             BucketName: !Ref Bucket
+      Events:
+        HourlyGetResourceMetricsDump:
+          Type: Schedule
+          Properties:
+            Schedule: cron(5 * * * ? *)
+            Input: !Sub '{ "region": "${AWS::Region}", "interval": "1h", "dumpType": "GetResourceMetrics" }'
+        HourlyDescribeDimensionKeysDump:
+          Type: Schedule
+          Properties:
+            Schedule: cron(20 * * * ? *)
+            Input: !Sub '{ "region": "${AWS::Region}", "interval": "1h", "dumpType": "DescribeDimensionKeys" }'
   Bucket:
     Type: AWS::S3::Bucket
     Properties:
