@@ -235,17 +235,23 @@ func handler(req LambdaRequest) (LambdaResponse, error) {
 			}, err
 		}
 	}
-	err = dump(req.Region, startTime, endTime, d, req.DumpType)
-	if err != nil {
-		return LambdaResponse{
-			StatusCode:        500,
-			StatusDescription: "500 Internal Server Error",
-			IsBase64Encoded:   false,
-			Headers: map[string]string{
-				"Content-Type": "text/plain",
-			},
-			Body: "error",
-		}, err
+	dumpTypes := []string{"GetResourceMetrics", "DescribeDimensionKeys"}
+	if req.DumpType != "" {
+		dumpTypes = []string{req.DumpType}
+	}
+	for _, dumpType := range dumpTypes {
+		err = dump(req.Region, startTime, endTime, d, dumpType)
+		if err != nil {
+			return LambdaResponse{
+				StatusCode:        500,
+				StatusDescription: "500 Internal Server Error",
+				IsBase64Encoded:   false,
+				Headers: map[string]string{
+					"Content-Type": "text/plain",
+				},
+				Body: "error",
+			}, err
+		}
 	}
 
 	return LambdaResponse{
