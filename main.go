@@ -158,7 +158,7 @@ func dump(region string, startTime time.Time, endTime time.Time, interval time.D
 
 				bucket := "rds-performance-insights-" + *identity.Account
 				now := time.Now().Truncate(interval)
-				key := fmt.Sprintf("%s/%s/%s/%s/%s/%s/%s.json", *instance.DBInstanceIdentifier, piMetric, piDimension, now.Format("2006"), now.Format("01"), now.Format("02"), now.Format("20060102T150405Z"))
+				key := fmt.Sprintf("%s/%s/%s/%s/%s/%s/%s/%s/%s/%s.json", *identity.Account, region, *instance.DBInstanceIdentifier, dumpType, piMetric, piDimension, now.Format("2006"), now.Format("01"), now.Format("02"), now.Format("20060102T150405Z"))
 				uploader := s3manager.NewUploader(sess)
 				_, err = uploader.Upload(&s3manager.UploadInput{
 					Bucket: aws.String(bucket),
