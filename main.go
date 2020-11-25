@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -86,7 +87,8 @@ func dump(region string, startTime time.Time, endTime time.Time, interval time.D
 		}
 		for _, piMetric := range piMetrics {
 			for _, piDimension := range piDimensions {
-				buf := new(bytes.Buffer)
+				var buf bytes.Buffer
+				writer := gzip.NewWriter(&buf)
 
 				switch dumpType {
 				case "GetResourceMetrics":
@@ -118,7 +120,7 @@ func dump(region string, startTime time.Time, endTime time.Time, interval time.D
 						if err != nil {
 							return err
 						}
-						if _, err := buf.Write(b); err != nil {
+						if _, err := writer.Write(b); err != nil {
 							return err
 						}
 
@@ -151,14 +153,14 @@ func dump(region string, startTime time.Time, endTime time.Time, interval time.D
 					if err != nil {
 						return err
 					}
-					if _, err := buf.Write(b); err != nil {
+					if _, err := writer.Write(b); err != nil {
 						return err
 					}
 				}
 
 				bucket := "rds-performance-insights-" + *identity.Account
 				now := time.Now().Truncate(interval)
-				key := fmt.Sprintf("%s/accountId=%s/region=%s/dbInstanceIdentifier=%s/metric=%s/dimension=%s/dt=%s/%s.json", dumpType, *identity.Account, region, *instance.DBInstanceIdentifier, piMetric, piDimension, now.Format("2006-01-02-15"), now.Format("20060102T150405Z"))
+				key := fmt.Sprintf("%s/accountId=%s/region=%s/dbInstanceIdentifier=%s/metric=%s/dimension=%s/dt=%s/%s.json.gz", dumpType, *identity.Account, region, *instance.DBInstanceIdentifier, piMetric, piDimension, now.Format("2006-01-02-15"), now.Format("20060102T150405Z"))
 				uploader := s3manager.NewUploader(sess)
 				_, err = uploader.Upload(&s3manager.UploadInput{
 					Bucket: aws.String(bucket),
