@@ -123,6 +123,9 @@ func dump(region string, startTime time.Time, endTime time.Time, interval time.D
 						if _, err := writer.Write(b); err != nil {
 							return err
 						}
+						if _, err := writer.Write([]byte("\n")); err != nil {
+							return err
+						}
 
 						st = nt
 						time.Sleep(1 * time.Second)
@@ -156,11 +159,15 @@ func dump(region string, startTime time.Time, endTime time.Time, interval time.D
 					if _, err := writer.Write(b); err != nil {
 						return err
 					}
+					if _, err := writer.Write([]byte("\n")); err != nil {
+						return err
+					}
 				}
 
+				writer.Close()
 				bucket := "rds-performance-insights-" + *identity.Account
 				now := time.Now().Truncate(interval)
-				key := fmt.Sprintf("%s/accountId=%s/region=%s/dbInstanceIdentifier=%s/metric=%s/dimension=%s/dt=%s/%s.json.gz", dumpType, *identity.Account, region, *instance.DBInstanceIdentifier, piMetric, piDimension, now.Format("2006-01-02-15"), now.Format("20060102T150405Z"))
+				key := fmt.Sprintf("%s/accountid=%s/region=%s/dbinstanceidentifier=%s/metric=%s/dimension=%s/dt=%s/%s.json.gz", dumpType, *identity.Account, region, *instance.DBInstanceIdentifier, piMetric, piDimension, now.Format("2006-01-02-15"), now.Format("20060102T150405Z"))
 				uploader := s3manager.NewUploader(sess)
 				_, err = uploader.Upload(&s3manager.UploadInput{
 					Bucket: aws.String(bucket),
