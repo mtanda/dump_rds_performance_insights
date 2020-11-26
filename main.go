@@ -130,52 +130,68 @@ func dump(region string, startTime time.Time, endTime time.Time, interval time.D
 						st = nt
 						time.Sleep(1 * time.Second)
 					}
-				case "DescribeDimensionKeys":
-					resp, err := piSvc.DescribeDimensionKeys(&pi.DescribeDimensionKeysInput{
-						ServiceType: aws.String("RDS"),
-						Identifier:  instance.DbiResourceId,
-						Metric:      aws.String(piMetric),
-						GroupBy: &pi.DimensionGroup{
-							Group: aws.String(piDimension),
-							Limit: aws.Int64(limit),
-						},
-						PartitionBy: &pi.DimensionGroup{
-							Group: aws.String(piDimension),
-							Limit: aws.Int64(limit),
-						},
-						StartTime:       aws.Time(startTime),
-						EndTime:         aws.Time(endTime),
-						PeriodInSeconds: aws.Int64(periodInSeconds),
-						MaxResults:      aws.Int64(maxResults),
+
+					writer.Close()
+					bucket := "rds-performance-insights-" + *identity.Account
+					now := time.Now().Truncate(interval)
+					key := fmt.Sprintf("%s/accountid=%s/region=%s/dbinstanceidentifier=%s/metric=%s/group=%s/dt=%s/%s.json.gz", dumpType, *identity.Account, region, *instance.DBInstanceIdentifier, piMetric, piDimension, now.Format("2006-01-02-15"), now.Format("20060102T150405Z"))
+					uploader := s3manager.NewUploader(sess)
+					_, err = uploader.Upload(&s3manager.UploadInput{
+						Bucket: aws.String(bucket),
+						Key:    aws.String(key),
+						Body:   bytes.NewReader(buf.Bytes()),
 					})
 					if err != nil {
 						return err
 					}
+				case "DescribeDimensionKeys":
+					for _, partitionKey := range piDimensions {
+						resp, err := piSvc.DescribeDimensionKeys(&pi.DescribeDimensionKeysInput{
+							ServiceType: aws.String("RDS"),
+							Identifier:  instance.DbiResourceId,
+							Metric:      aws.String(piMetric),
+							GroupBy: &pi.DimensionGroup{
+								Group: aws.String(piDimension),
+								Limit: aws.Int64(limit),
+							},
+							PartitionBy: &pi.DimensionGroup{
+								Group: aws.String(piDimension),
+								Limit: aws.Int64(limit),
+							},
+							StartTime:       aws.Time(startTime),
+							EndTime:         aws.Time(endTime),
+							PeriodInSeconds: aws.Int64(periodInSeconds),
+							MaxResults:      aws.Int64(maxResults),
+						})
+						if err != nil {
+							return err
+						}
 
-					b, err := json.Marshal(&resp)
-					if err != nil {
-						return err
-					}
-					if _, err := writer.Write(b); err != nil {
-						return err
-					}
-					if _, err := writer.Write([]byte("\n")); err != nil {
-						return err
-					}
-				}
+						b, err := json.Marshal(&resp)
+						if err != nil {
+							return err
+						}
+						if _, err := writer.Write(b); err != nil {
+							return err
+						}
+						if _, err := writer.Write([]byte("\n")); err != nil {
+							return err
+						}
 
-				writer.Close()
-				bucket := "rds-performance-insights-" + *identity.Account
-				now := time.Now().Truncate(interval)
-				key := fmt.Sprintf("%s/accountid=%s/region=%s/dbinstanceidentifier=%s/metric=%s/dimension=%s/dt=%s/%s.json.gz", dumpType, *identity.Account, region, *instance.DBInstanceIdentifier, piMetric, piDimension, now.Format("2006-01-02-15"), now.Format("20060102T150405Z"))
-				uploader := s3manager.NewUploader(sess)
-				_, err = uploader.Upload(&s3manager.UploadInput{
-					Bucket: aws.String(bucket),
-					Key:    aws.String(key),
-					Body:   bytes.NewReader(buf.Bytes()),
-				})
-				if err != nil {
-					return err
+						writer.Close()
+						bucket := "rds-performance-insights-" + *identity.Account
+						now := time.Now().Truncate(interval)
+						key := fmt.Sprintf("%s/accountid=%s/region=%s/dbinstanceidentifier=%s/metric=%s/group=%s/partition=%s/dt=%s/%s.json.gz", dumpType, *identity.Account, region, *instance.DBInstanceIdentifier, piMetric, piDimension, partitionKey, now.Format("2006-01-02-15"), now.Format("20060102T150405Z"))
+						uploader := s3manager.NewUploader(sess)
+						_, err = uploader.Upload(&s3manager.UploadInput{
+							Bucket: aws.String(bucket),
+							Key:    aws.String(key),
+							Body:   bytes.NewReader(buf.Bytes()),
+						})
+						if err != nil {
+							return err
+						}
+					}
 				}
 			}
 		}
