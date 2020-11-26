@@ -146,7 +146,7 @@ func dump(region string, startTime time.Time, endTime time.Time, interval time.D
 					}
 				case "DescribeDimensionKeys":
 					for _, partitionKey := range piDimensions {
-						resp, err := piSvc.DescribeDimensionKeys(&pi.DescribeDimensionKeysInput{
+						param := &pi.DescribeDimensionKeysInput{
 							ServiceType: aws.String("RDS"),
 							Identifier:  instance.DbiResourceId,
 							Metric:      aws.String(piMetric),
@@ -154,15 +154,18 @@ func dump(region string, startTime time.Time, endTime time.Time, interval time.D
 								Group: aws.String(piDimension),
 								Limit: aws.Int64(limit),
 							},
-							PartitionBy: &pi.DimensionGroup{
-								Group: aws.String(piDimension),
-								Limit: aws.Int64(limit),
-							},
 							StartTime:       aws.Time(startTime),
 							EndTime:         aws.Time(endTime),
 							PeriodInSeconds: aws.Int64(periodInSeconds),
 							MaxResults:      aws.Int64(maxResults),
-						})
+						}
+						if piDimension != partitionKey {
+							param.PartitionBy = &pi.DimensionGroup{
+								Group: aws.String(partitionKey),
+								Limit: aws.Int64(limit),
+							}
+						}
+						resp, err := piSvc.DescribeDimensionKeys(param)
 						if err != nil {
 							return err
 						}
